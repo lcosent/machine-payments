@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/types" },
+    { "path": "./services/mpp-sim" },
+    { "path": "./apps/agent" }
+  ]
+}
