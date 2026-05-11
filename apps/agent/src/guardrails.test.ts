@@ -60,12 +60,10 @@ describe('checkSpend', () => {
   });
 
   it('rejects merchants not in the allowlist', () => {
-    expect(
-      checkSpend(
-        attempt({ merchant: 'merchant:unknown' as MerchantId }),
-        ctx(),
-      ),
-    ).toEqual({ allow: false, reason: 'merchant_not_in_allowlist' });
+    expect(checkSpend(attempt({ merchant: 'merchant:unknown' as MerchantId }), ctx())).toEqual({
+      allow: false,
+      reason: 'merchant_not_in_allowlist',
+    });
   });
 
   it('rejects when per-tx cap exceeded', () => {
@@ -87,9 +85,7 @@ describe('checkSpend', () => {
   });
 
   it('ignores spends outside the daily window when computing daily total', () => {
-    const history = [
-      { amount_usd: 900, at_unix_sec: NOW - 26 * 3600, merchant: DCOMP },
-    ];
+    const history = [{ amount_usd: 900, at_unix_sec: NOW - 26 * 3600, merchant: DCOMP }];
     expect(checkSpend(attempt({ amount_usd: 80 }), ctx({ history }))).toEqual({
       allow: true,
       requires_hitl: false,

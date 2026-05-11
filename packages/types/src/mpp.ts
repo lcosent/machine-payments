@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { AgentIdSchema, MerchantIdSchema, PrincipalIdSchema, RailSchema, TaskIdSchema } from './rail.js';
+import {
+  AgentIdSchema,
+  MerchantIdSchema,
+  PrincipalIdSchema,
+  RailSchema,
+  TaskIdSchema,
+} from './rail.js';
 
 export const ScopeCapsSchema = z.object({
   per_tx_usd: z.number().positive(),

@@ -72,12 +72,12 @@ MPP-signed receipts + onchain events, joined by `task_id`.
 
 ## 3. Why This Beats the Standard
 
-| Approach | Identity / authority | Settlement | Working capital | Reconciliation |
-|---|---|---|---|---|
-| Corporate card + human | OK for humans, none for agents | Card rails only; fees, lag, no crypto-native | Human-gated credit, days | Manual |
-| Prefunded crypto wallet | No delegation, no governance | Stablecoin only | None | None |
-| Standard credit line | Human approval | Wire/ACH | Slow draw, slow repay | Manual |
-| **AutoCompute (this PoC)** | **MPP-scoped delegation, signed receipts** | **Cards + USDC, sub-second** | **Programmatic draw/repay** | **Unified statement, joined by task** |
+| Approach                   | Identity / authority                       | Settlement                                   | Working capital             | Reconciliation                        |
+| -------------------------- | ------------------------------------------ | -------------------------------------------- | --------------------------- | ------------------------------------- |
+| Corporate card + human     | OK for humans, none for agents             | Card rails only; fees, lag, no crypto-native | Human-gated credit, days    | Manual                                |
+| Prefunded crypto wallet    | No delegation, no governance               | Stablecoin only                              | None                        | None                                  |
+| Standard credit line       | Human approval                             | Wire/ACH                                     | Slow draw, slow repay       | Manual                                |
+| **AutoCompute (this PoC)** | **MPP-scoped delegation, signed receipts** | **Cards + USDC, sub-second**                 | **Programmatic draw/repay** | **Unified statement, joined by task** |
 
 ---
 
@@ -136,17 +136,17 @@ MPP-signed receipts + onchain events, joined by `task_id`.
 
 ### Components
 
-| Component | Responsibility | Tech |
-|---|---|---|
-| Principal dashboard | Provision agents, set MPP scope, view statement | Next.js (App Router) on Vercel |
-| MPP Credential Service | Issuer keys, mint delegations, per-tx intents, settlement receipts | Next.js route handlers + `jose` for JWT |
-| Compute Agent | Plans and executes tasks; tool-using LLM with guardrails | Anthropic Claude Sonnet 4.6, prompt caching on system + tool defs |
-| Hyperscaler mock | Quotes and charges via simulated Visa card rail | Next.js route handlers; in-memory ledger |
-| Decentralized provider mock | Quotes; opens job; meters; settles against escrow | Next.js route handlers + Base Sepolia reads |
-| `Escrow.sol` | Holds USDC for an active job; releases on settle, refunds on timeout | Foundry, deployed Base Sepolia |
-| `CreditLine.sol` | Overcollateralized USDC credit line; draw/repay; interest accrual | Foundry, deployed Base Sepolia |
-| Smart wallet | Gasless agent transactions | Coinbase Smart Wallet (preferred) or Privy embedded wallet |
-| Reconciliation ledger | Joins MPP receipts + onchain events | Supabase Postgres |
+| Component                   | Responsibility                                                       | Tech                                                              |
+| --------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Principal dashboard         | Provision agents, set MPP scope, view statement                      | Next.js (App Router) on Vercel                                    |
+| MPP Credential Service      | Issuer keys, mint delegations, per-tx intents, settlement receipts   | Next.js route handlers + `jose` for JWT                           |
+| Compute Agent               | Plans and executes tasks; tool-using LLM with guardrails             | Anthropic Claude Sonnet 4.6, prompt caching on system + tool defs |
+| Hyperscaler mock            | Quotes and charges via simulated Visa card rail                      | Next.js route handlers; in-memory ledger                          |
+| Decentralized provider mock | Quotes; opens job; meters; settles against escrow                    | Next.js route handlers + Base Sepolia reads                       |
+| `Escrow.sol`                | Holds USDC for an active job; releases on settle, refunds on timeout | Foundry, deployed Base Sepolia                                    |
+| `CreditLine.sol`            | Overcollateralized USDC credit line; draw/repay; interest accrual    | Foundry, deployed Base Sepolia                                    |
+| Smart wallet                | Gasless agent transactions                                           | Coinbase Smart Wallet (preferred) or Privy embedded wallet        |
+| Reconciliation ledger       | Joins MPP receipts + onchain events                                  | Supabase Postgres                                                 |
 
 ---
 
@@ -221,12 +221,12 @@ ones.
     "caps": {
       "per_tx_usd": 250,
       "daily_usd": 1000,
-      "weekly_usd": 5000
+      "weekly_usd": 5000,
     },
     "allowlist": ["merchant:hyperscaler-mock", "merchant:dcomp-mock"],
-    "hitl_threshold_usd": 200
+    "hitl_threshold_usd": 200,
   },
-  "key_binding": "did:key:z6Mk..." // agent's signing pubkey
+  "key_binding": "did:key:z6Mk...", // agent's signing pubkey
 }
 ```
 
@@ -244,7 +244,7 @@ Issued just-in-time before each spend:
   "merchant": "merchant:dcomp-mock",
   "amount_ceiling_usd": 100,
   "expires_at": 1736902800,
-  "intent_hash": "0x..." // hashed by smart contract on escrow open
+  "intent_hash": "0x...", // hashed by smart contract on escrow open
 }
 ```
 
@@ -325,27 +325,28 @@ the dashboard.
 
 ## 9. Pressure-Test Results & Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Visa MPP SDK is gated | `MppPort` abstraction; simulator implements documented semantics; real-SDK adapter is a follow-up |
-| Stablecoin UX kills demos | ERC-4337 smart wallet + paymaster; agent never sees gas |
-| Undercollateralized agent credit is unrealistic at PoC scope | Overcollateralized `CreditLine.sol`; undercollateralized noted as v4 |
-| Runaway-spend / agent compromise | Three-layer defense: MPP scope + agent-loop guardrails + smart-wallet session-key policy |
-| Cross-rail reconciliation is the real enterprise pain | First-class Unified Statement, joined by `task_id`, with anomaly flags |
-| Real decentralized compute providers need real wallets | Two mocks with realistic surfaces (`/quote /start /meter /settle`) |
-| Per-second streaming payments are complex | Escrow + per-tick claim/refund, not continuous streams |
-| Base Sepolia liquidity / latency | Self-deploy `CreditLine.sol` with seeded liquidity; cap timeouts; cache RPC reads |
-| Cost overrun arrives faster than credit draw confirms | Agent pre-draws when projected cost crosses 80% of float; debt accrues only on borrowed balance |
-| Regulatory ambiguity | Testnet only, US scope, no real cards/funds; called out in §10 |
-| LLM nondeterminism in a payments loop | Structured outputs + tool calls only; all spend gated by deterministic guardrails; LLM cannot bypass `MppPort` |
-| Provider can cheat on `/meter` reports | `/meter` is advisory; final `/settle` is bounded by escrow's `amount` ceiling; provider signature is verified onchain |
-| Replay of intent receipts | `intent_hash` is single-use, consumed by `Escrow.openJob`; expiry enforced |
+| Risk                                                         | Mitigation                                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Visa MPP SDK is gated                                        | `MppPort` abstraction; simulator implements documented semantics; real-SDK adapter is a follow-up                     |
+| Stablecoin UX kills demos                                    | ERC-4337 smart wallet + paymaster; agent never sees gas                                                               |
+| Undercollateralized agent credit is unrealistic at PoC scope | Overcollateralized `CreditLine.sol`; undercollateralized noted as v4                                                  |
+| Runaway-spend / agent compromise                             | Three-layer defense: MPP scope + agent-loop guardrails + smart-wallet session-key policy                              |
+| Cross-rail reconciliation is the real enterprise pain        | First-class Unified Statement, joined by `task_id`, with anomaly flags                                                |
+| Real decentralized compute providers need real wallets       | Two mocks with realistic surfaces (`/quote /start /meter /settle`)                                                    |
+| Per-second streaming payments are complex                    | Escrow + per-tick claim/refund, not continuous streams                                                                |
+| Base Sepolia liquidity / latency                             | Self-deploy `CreditLine.sol` with seeded liquidity; cap timeouts; cache RPC reads                                     |
+| Cost overrun arrives faster than credit draw confirms        | Agent pre-draws when projected cost crosses 80% of float; debt accrues only on borrowed balance                       |
+| Regulatory ambiguity                                         | Testnet only, US scope, no real cards/funds; called out in §10                                                        |
+| LLM nondeterminism in a payments loop                        | Structured outputs + tool calls only; all spend gated by deterministic guardrails; LLM cannot bypass `MppPort`        |
+| Provider can cheat on `/meter` reports                       | `/meter` is advisory; final `/settle` is bounded by escrow's `amount` ceiling; provider signature is verified onchain |
+| Replay of intent receipts                                    | `intent_hash` is single-use, consumed by `Escrow.openJob`; expiry enforced                                            |
 
 ---
 
 ## 10. Scope & Non-Goals
 
 **In scope (v1):**
+
 - Two mock providers, one Visa-billed, one USDC-escrow
 - MPP simulator with full delegation + intent + settlement surface
 - Base Sepolia smart wallet, escrow, credit line
@@ -353,6 +354,7 @@ the dashboard.
 - Unified Statement view
 
 **Out of scope (v1):**
+
 - Real Visa MPP SDK integration (v2)
 - Real decentralized compute provider (v3)
 - Undercollateralized credit (v4)
@@ -398,6 +400,7 @@ human intervention beyond initial provisioning:
    - No guardrail violations; no manual intervention
 
 Automated tests (`pnpm test`, `forge test`) must also pass:
+
 - Guardrail unit tests (cap arithmetic, allowlist, cooldown)
 - `MppSimAdapter` produces JWTs that `verify()` accepts; expired/wrong-aud rejected
 - `Escrow.sol` honors `amount` ceiling; replay rejected; refund after deadline works

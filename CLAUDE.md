@@ -17,17 +17,17 @@ verification plan in `design.md` §12 — nothing more, nothing less.
 
 ## Architecture Quick-Map
 
-| Concern | Location |
-|---|---|
+| Concern                                                    | Location                         |
+| ---------------------------------------------------------- | -------------------------------- |
 | Web app + API routes (Principal dashboard, mock providers) | `apps/web/` (Next.js App Router) |
-| Compute Agent loop (Claude tool use) | `apps/agent/` |
-| MPP simulator + `MppPort` adapter | `services/mpp-sim/` |
-| Reconciliation worker | `services/reconciler/` |
-| Solidity contracts (`Escrow.sol`, `CreditLine.sol`) | `contracts/` (Foundry) |
-| Smart-wallet & onchain client helpers | `packages/onchain/` |
-| Shared types (MPP claims, task DTOs, ledger rows) | `packages/types/` |
-| Supabase migrations | `supabase/migrations/` |
-| End-to-end demo script | `scripts/demo.ts` |
+| Compute Agent loop (Claude tool use)                       | `apps/agent/`                    |
+| MPP simulator + `MppPort` adapter                          | `services/mpp-sim/`              |
+| Reconciliation worker                                      | `services/reconciler/`           |
+| Solidity contracts (`Escrow.sol`, `CreditLine.sol`)        | `contracts/` (Foundry)           |
+| Smart-wallet & onchain client helpers                      | `packages/onchain/`              |
+| Shared types (MPP claims, task DTOs, ledger rows)          | `packages/types/`                |
+| Supabase migrations                                        | `supabase/migrations/`           |
+| End-to-end demo script                                     | `scripts/demo.ts`                |
 
 When you add a new component, also add a row here.
 
@@ -59,7 +59,7 @@ merged.
 
 - **TypeScript strict.** No `any`, no `as unknown as`. Use Zod or `valibot`
   at trust boundaries (HTTP, JWT, onchain reads).
-- **No comments unless they explain the *why*.** Names should carry the *what*.
+- **No comments unless they explain the _why_.** Names should carry the _what_.
 - **No `console.log` in production paths.** Use the shared logger
   (`packages/types/log.ts`). `console.log` is acceptable in `scripts/` only.
 - **Secrets via env only.** Never commit `.env`. `.env.example` documents required vars.
@@ -69,7 +69,7 @@ merged.
 - **All onchain calls go through `packages/onchain/`.** No raw `ethers`/`viem`
   imports in `apps/` or `services/`.
 - **The agent (LLM) cannot bypass guardrails.** Guardrails are pure functions
-  in `apps/agent/guardrails.ts`, called *before* any tool fires. If a new tool
+  in `apps/agent/guardrails.ts`, called _before_ any tool fires. If a new tool
   spends money, it needs a guardrail check — no exceptions.
 
 ---
@@ -78,7 +78,7 @@ merged.
 
 - Develop on branch **`claude/mpp-poc-design-GKca5`**. Never push to `main`.
 - One logical change per commit. Commit messages: imperative mood, ≤72 chars
-  for the subject; body explains *why* if non-obvious.
+  for the subject; body explains _why_ if non-obvious.
 - Never `--no-verify`. Never amend a published commit. Fix forward.
 - Push only via `git push -u origin claude/mpp-poc-design-GKca5`. On network
   failure, retry up to 4× with exponential backoff (2s, 4s, 8s, 16s).
@@ -100,7 +100,7 @@ merged.
   - `get_advisors` after any change
   - `apply_migration` writes go directly to the remote project — be careful
 - **Vercel MCP** for deploy logs and build status when chasing a CI failure.
-- **GitHub MCP** for *all* GitHub interactions. There is no `gh` CLI in this
+- **GitHub MCP** for _all_ GitHub interactions. There is no `gh` CLI in this
   sandbox.
 - **`claude-api` skill**: invoke whenever you touch `apps/agent/` so prompt
   caching, tool-use patterns, and model selection stay current. The agent

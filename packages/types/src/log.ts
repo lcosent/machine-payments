@@ -13,7 +13,9 @@ interface LogRecord {
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 const envLevel = (): LogLevel => {
-  const raw = (typeof process !== 'undefined' ? process.env['LOG_LEVEL'] : undefined)?.toLowerCase();
+  const raw = (
+    typeof process !== 'undefined' ? process.env['LOG_LEVEL'] : undefined
+  )?.toLowerCase();
   if (raw === 'debug' || raw === 'info' || raw === 'warn' || raw === 'error') return raw;
   return 'info';
 };
@@ -38,12 +40,37 @@ export interface Logger {
 
 export const makeLogger = (ns: string, baseFields: LogFields = {}): Logger => ({
   debug: (msg, fields) =>
-    emit({ level: 'debug', msg, ts: new Date().toISOString(), ns, fields: { ...baseFields, ...fields } }),
+    emit({
+      level: 'debug',
+      msg,
+      ts: new Date().toISOString(),
+      ns,
+      fields: { ...baseFields, ...fields },
+    }),
   info: (msg, fields) =>
-    emit({ level: 'info', msg, ts: new Date().toISOString(), ns, fields: { ...baseFields, ...fields } }),
+    emit({
+      level: 'info',
+      msg,
+      ts: new Date().toISOString(),
+      ns,
+      fields: { ...baseFields, ...fields },
+    }),
   warn: (msg, fields) =>
-    emit({ level: 'warn', msg, ts: new Date().toISOString(), ns, fields: { ...baseFields, ...fields } }),
+    emit({
+      level: 'warn',
+      msg,
+      ts: new Date().toISOString(),
+      ns,
+      fields: { ...baseFields, ...fields },
+    }),
   error: (msg, fields) =>
-    emit({ level: 'error', msg, ts: new Date().toISOString(), ns, fields: { ...baseFields, ...fields } }),
-  child: (childNs, childFields) => makeLogger(`${ns}.${childNs}`, { ...baseFields, ...childFields }),
+    emit({
+      level: 'error',
+      msg,
+      ts: new Date().toISOString(),
+      ns,
+      fields: { ...baseFields, ...fields },
+    }),
+  child: (childNs, childFields) =>
+    makeLogger(`${ns}.${childNs}`, { ...baseFields, ...childFields }),
 });

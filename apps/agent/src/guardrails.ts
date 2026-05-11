@@ -38,16 +38,10 @@ export type GuardrailRejection =
 const ONE_DAY = 24 * 60 * 60;
 const ONE_WEEK = 7 * ONE_DAY;
 
-const sumSince = (
-  history: ReadonlyArray<SpendHistoryEntry>,
-  windowStart: number,
-): number =>
+const sumSince = (history: ReadonlyArray<SpendHistoryEntry>, windowStart: number): number =>
   history.reduce((acc, h) => (h.at_unix_sec >= windowStart ? acc + h.amount_usd : acc), 0);
 
-export const checkSpend = (
-  attempt: SpendAttempt,
-  ctx: GuardrailContext,
-): GuardrailDecision => {
+export const checkSpend = (attempt: SpendAttempt, ctx: GuardrailContext): GuardrailDecision => {
   if (attempt.amount_usd <= 0) {
     return { allow: false, reason: 'non_positive_amount' };
   }

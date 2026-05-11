@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/types" },
+    { "path": "./packages/onchain" },
     { "path": "./services/mpp-sim" },
     { "path": "./apps/agent" }
   ]

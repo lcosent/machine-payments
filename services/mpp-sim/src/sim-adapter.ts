@@ -112,10 +112,7 @@ export class MppSimAdapter implements MppPort {
     return { jwt, claims: parsed };
   }
 
-  async verifyDelegation(
-    jwt: Jwt,
-    audience?: MerchantId,
-  ): Promise<VerifyResult<DelegationClaims>> {
+  async verifyDelegation(jwt: Jwt, audience?: MerchantId): Promise<VerifyResult<DelegationClaims>> {
     return this.verifyWith(jwt, DelegationClaimsSchema, audience);
   }
 
@@ -140,12 +137,13 @@ export class MppSimAdapter implements MppPort {
   ): Promise<VerifyResult<T>> {
     let payload: unknown;
     try {
-      const verified = await jwtVerify(jwt, await this.publicKeyPromise, { algorithms: [this.alg] });
+      const verified = await jwtVerify(jwt, await this.publicKeyPromise, {
+        algorithms: [this.alg],
+      });
       payload = verified.payload;
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
-      const reason: VerifyFailReason =
-        code === 'ERR_JWT_EXPIRED' ? 'expired' : 'bad_signature';
+      const reason: VerifyFailReason = code === 'ERR_JWT_EXPIRED' ? 'expired' : 'bad_signature';
       return { ok: false, reason };
     }
     let claims: T;
