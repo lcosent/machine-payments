@@ -8,11 +8,13 @@ export default [
       'dist/**',
       'build/**',
       '.next/**',
+      '**/.next/**',
       'coverage/**',
       'contracts/out/**',
       'contracts/cache/**',
       'contracts/lib/**',
       '**/*.config.js',
+      '**/next-env.d.ts',
     ],
   },
   {
