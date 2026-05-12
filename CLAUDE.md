@@ -17,17 +17,19 @@ verification plan in `design.md` §12 — nothing more, nothing less.
 
 ## Architecture Quick-Map
 
-| Concern                                                    | Location                         |
-| ---------------------------------------------------------- | -------------------------------- |
-| Web app + API routes (Principal dashboard, mock providers) | `apps/web/` (Next.js App Router) |
-| Compute Agent loop (tool use; `LlmPort` abstraction)       | `apps/agent/`                    |
-| MPP simulator + `MppPort` adapter                          | `services/mpp-sim/`              |
-| Reconciliation worker                                      | `services/reconciler/`           |
-| Solidity contracts (`Escrow.sol`, `CreditLine.sol`)        | `contracts/` (Foundry)           |
-| Smart-wallet & onchain client helpers                      | `packages/onchain/`              |
-| Shared types (MPP claims, task DTOs, ledger rows)          | `packages/types/`                |
-| Supabase migrations                                        | `supabase/migrations/`           |
-| End-to-end demo script                                     | `scripts/demo.ts`                |
+| Concern                                                    | Location                                 |
+| ---------------------------------------------------------- | ---------------------------------------- |
+| Web app + API routes (Principal dashboard, mock providers) | `apps/web/` (Next.js App Router)         |
+| Compute Agent loop (tool use; `LlmPort` abstraction)       | `apps/agent/`                            |
+| MPP simulator + `MppPort` adapter                          | `services/mpp-sim/`                      |
+| Reconciliation worker + LedgerSink ports                   | `services/reconciler/`                   |
+| Solidity contracts (`Escrow.sol`, `CreditLine.sol`)        | `contracts/` (Foundry)                   |
+| Smart-wallet & onchain client helpers                      | `packages/onchain/`                      |
+| Shared types (MPP claims, task DTOs, ledger rows)          | `packages/types/`                        |
+| Supabase migrations                                        | `supabase/migrations/`                   |
+| Offline MPP-only walkthrough                               | `scripts/demo.ts`                        |
+| End-to-end runnable demo (tier 1/2/3 aware)                | `scripts/agent.ts` (`pnpm script:agent`) |
+| Step-by-step setup                                         | `RUNBOOK.md`                             |
 
 When you add a new component, also add a row here.
 

@@ -4,7 +4,10 @@ import {
   FakeScriptedLlmPort,
   HttpProviderPort,
   InMemoryEscrowPort,
+  OnchainCreditPort,
+  OnchainEscrowPort,
   type CreditPort,
+  type EscrowPort,
   type HandlerDeps,
   type LlmPort,
   type ScriptedTurn,
@@ -12,8 +15,14 @@ import {
   makeLlmFromEnv,
   runAgent,
 } from '@autocompute/agent';
+import { makeEoaWallet, type Address, type Hex } from '@autocompute/onchain';
 import { MppSimAdapter } from '@autocompute/mpp-sim';
-import { InMemoryLedgerSink, reconcile } from '@autocompute/reconciler';
+import {
+  InMemoryLedgerSink,
+  SupabaseLedgerSink,
+  reconcile,
+  type LedgerSink,
+} from '@autocompute/reconciler';
 import { makeLogger, type DelegationScope, type MerchantId, type TaskId } from '@autocompute/types';
 
 const log = makeLogger('script.agent');
@@ -155,7 +164,12 @@ const main = async () => {
     budget_usd: BUDGET_USD,
   });
 
-  const ledgerSink = new InMemoryLedgerSink();
+  const ledgerSink: LedgerSink = env['DATABASE_URL']
+    ? (log.info('using SupabaseLedgerSink', {
+        db: env['DATABASE_URL']!.replace(/:[^:@]+@/, ':***@'),
+      }),
+      new SupabaseLedgerSink({ databaseUrl: env['DATABASE_URL']! }))
+    : new InMemoryLedgerSink();
   const { publicKey, privateKey } = await generateKeyPair('EdDSA', { extractable: true });
   const mpp = new MppSimAdapter({
     issuerId: 'mpp-sim://demo/issuer',
@@ -179,8 +193,40 @@ const main = async () => {
     dcompBaseUrl: DCOMP_BASE,
     hyperscalerBaseUrl: HYPER_BASE,
   });
-  const credit = inMemoryCredit(500);
-  const escrow = new InMemoryEscrowPort({ ledgerSink });
+  // Onchain swap-in. If ESCROW_ADDRESS + CREDIT_LINE_ADDRESS + AGENT_PRIVATE_KEY +
+  // BASE_SEPOLIA_RPC are all set, replace the in-memory ports with viem-backed
+  // ones that hit the deployed contracts. Drop-in; nothing else changes.
+  const wantOnchain =
+    env['ESCROW_ADDRESS'] &&
+    env['CREDIT_LINE_ADDRESS'] &&
+    env['AGENT_PRIVATE_KEY'] &&
+    env['BASE_SEPOLIA_RPC'] &&
+    env['USDC_ADDRESS'];
+
+  let credit: CreditPort & { state?(): { available_usd: number; principal_usd: number } };
+  let escrow: EscrowPort;
+
+  if (wantOnchain) {
+    log.info('using onchain ports', {
+      escrow: env['ESCROW_ADDRESS'],
+      creditLine: env['CREDIT_LINE_ADDRESS'],
+    });
+    const wallet = makeEoaWallet(env['AGENT_PRIVATE_KEY'] as Hex, env['BASE_SEPOLIA_RPC']!);
+    credit = new OnchainCreditPort({
+      wallet,
+      usdc: env['USDC_ADDRESS']! as Address,
+      creditLine: env['CREDIT_LINE_ADDRESS']! as Address,
+    });
+    escrow = new OnchainEscrowPort({
+      wallet,
+      usdc: env['USDC_ADDRESS']! as Address,
+      escrow: env['ESCROW_ADDRESS']! as Address,
+      ledgerSink,
+    });
+  } else {
+    credit = inMemoryCredit(500);
+    escrow = new InMemoryEscrowPort({ ledgerSink });
+  }
 
   const taskId = `task_${ulid()}` as TaskId;
   const task = {
@@ -239,7 +285,10 @@ const main = async () => {
     },
     spends: state.history.length,
     open_intents: state.open_intents.size,
-    credit: credit.state(),
+    credit:
+      typeof credit.state === 'function'
+        ? credit.state()
+        : 'onchain (state not tracked in-process)',
   });
 
   if (state.history.length > 0) {

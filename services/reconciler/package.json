@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@autocompute/types": "workspace:*"
+    "@autocompute/types": "workspace:*",
+    "postgres": "3.4.5"
   }
 }
