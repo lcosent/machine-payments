@@ -7,15 +7,23 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./guardrails": "./src/guardrails.ts"
+    "./guardrails": "./src/guardrails.ts",
+    "./loop": "./src/loop.ts",
+    "./tools": "./src/tools.ts"
   },
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run"
   },
   "dependencies": {
-    "@autocompute/types": "workspace:*",
+    "@anthropic-ai/sdk": "0.95.2",
     "@autocompute/mpp-sim": "workspace:*",
-    "zod": "3.24.1"
+    "@autocompute/onchain": "workspace:*",
+    "@autocompute/types": "workspace:*",
+    "ulidx": "2.4.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "jose": "5.9.6"
   }
 }

@@ -6,5 +6,9 @@
     "composite": true
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../../packages/types" }, { "path": "../../services/mpp-sim" }]
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/onchain" },
+    { "path": "../../services/mpp-sim" }
+  ]
 }

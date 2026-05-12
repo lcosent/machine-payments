@@ -139,6 +139,7 @@ export class MppSimAdapter implements MppPort {
     try {
       const verified = await jwtVerify(jwt, await this.publicKeyPromise, {
         algorithms: [this.alg],
+        currentDate: new Date(this.now() * 1000),
       });
       payload = verified.payload;
     } catch (e) {
