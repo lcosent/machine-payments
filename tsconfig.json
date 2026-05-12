@@ -4,6 +4,7 @@
     { "path": "./packages/types" },
     { "path": "./packages/onchain" },
     { "path": "./services/mpp-sim" },
+    { "path": "./services/reconciler" },
     { "path": "./apps/agent" }
   ]
 }
