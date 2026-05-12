@@ -127,7 +127,7 @@ export class OnchainEscrowPort implements EscrowPort {
   constructor(private readonly cfg: OnchainEscrowPortConfig) {}
 
   async openJob(input: OpenEscrowInput): Promise<OpenEscrowOutput> {
-    const { openTx } = await openEscrowJob({
+    const { openTx, jobId } = await openEscrowJob({
       escrow: this.cfg.escrow,
       usdc: this.cfg.usdc,
       wallet: this.cfg.wallet,
@@ -137,9 +137,10 @@ export class OnchainEscrowPort implements EscrowPort {
       intentHash: input.intent_hash,
       taskIdBytes32: taskIdToBytes32(input.task_id),
     });
-    // job_id is the contract-assigned uint256; we'd parse the JobOpened event
-    // here in production. For now we use the tx hash as the local handle.
-    const job_id = openTx;
+    // `job_id` is the contract-assigned uint256 from JobOpened, serialized
+    // as a decimal string so it round-trips cleanly through the ledger and
+    // the agent's open_intents map.
+    const job_id = jobId.toString();
     if (this.cfg.ledgerSink) {
       await this.cfg.ledgerSink.recordOnchainEvent({
         id: ulid(),
@@ -159,14 +160,13 @@ export class OnchainEscrowPort implements EscrowPort {
   }
 
   async settle(input: SettleEscrowInput): Promise<SettleEscrowOutput> {
-    // Settling onchain needs the uint256 jobId from the JobOpened event log.
-    // The decoded value belongs to a small indexing helper that pairs each
-    // openJob tx with its emitted JobOpened.jobId; for now this method is
-    // wired but not exercised end-to-end in the sandbox demo.
+    // job_id was emitted by Escrow.JobOpened as a uint256; we serialized it
+    // to a decimal string when storing. Use BigInt() (not parseInt) so we
+    // don't truncate ids that exceed Number.MAX_SAFE_INTEGER.
     const tx = await settleEscrowJob({
       escrow: this.cfg.escrow,
       wallet: this.cfg.wallet,
-      jobId: BigInt(parseInt(input.job_id, 10) || 0),
+      jobId: BigInt(input.job_id),
       finalAmountUsd: input.final_amount_usd,
       providerSig: input.provider_signature,
     });
