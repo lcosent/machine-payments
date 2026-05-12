@@ -20,7 +20,7 @@ verification plan in `design.md` §12 — nothing more, nothing less.
 | Concern                                                    | Location                         |
 | ---------------------------------------------------------- | -------------------------------- |
 | Web app + API routes (Principal dashboard, mock providers) | `apps/web/` (Next.js App Router) |
-| Compute Agent loop (Claude tool use)                       | `apps/agent/`                    |
+| Compute Agent loop (tool use; `LlmPort` abstraction)       | `apps/agent/`                    |
 | MPP simulator + `MppPort` adapter                          | `services/mpp-sim/`              |
 | Reconciliation worker                                      | `services/reconciler/`           |
 | Solidity contracts (`Escrow.sol`, `CreditLine.sol`)        | `contracts/` (Foundry)           |
@@ -105,6 +105,11 @@ merged.
 - **`claude-api` skill**: invoke whenever you touch `apps/agent/` so prompt
   caching, tool-use patterns, and model selection stay current. The agent
   loop must cache the system prompt + tool definitions.
+- **`LlmPort` abstraction** in `apps/agent/`: backend is chosen by the
+  `LLM_BACKEND` env var (`anthropic` | `openai_compat`). The OpenAI-compatible
+  port works with LM Studio (default base URL `http://localhost:1234/v1`),
+  Ollama, vLLM, llama.cpp server, LocalAI, OpenRouter. The agent loop must
+  go through `LlmPort` — no direct SDK calls from `loop.ts` or `handlers.ts`.
 - **`security-review` skill** before any commit that touches contracts,
   signing keys, JWT issuance, or guardrails.
 - **`simplify` skill** after finishing a feature, before opening a PR.

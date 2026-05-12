@@ -136,17 +136,17 @@ MPP-signed receipts + onchain events, joined by `task_id`.
 
 ### Components
 
-| Component                   | Responsibility                                                       | Tech                                                              |
-| --------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Principal dashboard         | Provision agents, set MPP scope, view statement                      | Next.js (App Router) on Vercel                                    |
-| MPP Credential Service      | Issuer keys, mint delegations, per-tx intents, settlement receipts   | Next.js route handlers + `jose` for JWT                           |
-| Compute Agent               | Plans and executes tasks; tool-using LLM with guardrails             | Anthropic Claude Sonnet 4.6, prompt caching on system + tool defs |
-| Hyperscaler mock            | Quotes and charges via simulated Visa card rail                      | Next.js route handlers; in-memory ledger                          |
-| Decentralized provider mock | Quotes; opens job; meters; settles against escrow                    | Next.js route handlers + Base Sepolia reads                       |
-| `Escrow.sol`                | Holds USDC for an active job; releases on settle, refunds on timeout | Foundry, deployed Base Sepolia                                    |
-| `CreditLine.sol`            | Overcollateralized USDC credit line; draw/repay; interest accrual    | Foundry, deployed Base Sepolia                                    |
-| Smart wallet                | Gasless agent transactions                                           | Coinbase Smart Wallet (preferred) or Privy embedded wallet        |
-| Reconciliation ledger       | Joins MPP receipts + onchain events                                  | Supabase Postgres                                                 |
+| Component                   | Responsibility                                                            | Tech                                                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Principal dashboard         | Provision agents, set MPP scope, view statement                           | Next.js (App Router) on Vercel                                                                                                                                                            |
+| MPP Credential Service      | Issuer keys, mint delegations, per-tx intents, settlement receipts        | Next.js route handlers + `jose` for JWT                                                                                                                                                   |
+| Compute Agent               | Plans and executes tasks; tool-using LLM behind `LlmPort` with guardrails | Default Anthropic Claude Sonnet 4.6 (cached system + tool defs); local OpenAI-compatible backend (LM Studio / Ollama / vLLM / llama.cpp / LocalAI) via the same port for offline/dev runs |
+| Hyperscaler mock            | Quotes and charges via simulated Visa card rail                           | Next.js route handlers; in-memory ledger                                                                                                                                                  |
+| Decentralized provider mock | Quotes; opens job; meters; settles against escrow                         | Next.js route handlers + Base Sepolia reads                                                                                                                                               |
+| `Escrow.sol`                | Holds USDC for an active job; releases on settle, refunds on timeout      | Foundry, deployed Base Sepolia                                                                                                                                                            |
+| `CreditLine.sol`            | Overcollateralized USDC credit line; draw/repay; interest accrual         | Foundry, deployed Base Sepolia                                                                                                                                                            |
+| Smart wallet                | Gasless agent transactions                                                | Coinbase Smart Wallet (preferred) or Privy embedded wallet                                                                                                                                |
+| Reconciliation ledger       | Joins MPP receipts + onchain events                                       | Supabase Postgres                                                                                                                                                                         |
 
 ---
 
