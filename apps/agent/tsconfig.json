@@ -9,6 +9,7 @@
   "references": [
     { "path": "../../packages/types" },
     { "path": "../../packages/onchain" },
-    { "path": "../../services/mpp-sim" }
+    { "path": "../../services/mpp-sim" },
+    { "path": "../../services/reconciler" }
   ]
 }

@@ -12,6 +12,7 @@ import {
   type HandlerDeps,
   type ProviderPort,
 } from './handlers.js';
+import { InMemoryEscrowPort } from './escrow-port.js';
 
 const ISSUER_ID = 'mpp-sim://test/agent-handlers';
 const PRINCIPAL = 'ent:acme-corp';
@@ -85,6 +86,7 @@ const makeDeps = async (overrides: Partial<HandlerDeps> = {}): Promise<HandlerDe
     mpp,
     providers: mockProviders(),
     credit: mockCredit(),
+    escrow: new InMemoryEscrowPort(),
     now: () => NOW,
     logger: makeLogger('test'),
     cooldown_seconds_between_large_spends: 60,
@@ -136,8 +138,10 @@ describe('dispatchTool', () => {
     if (r.ok) {
       const out = r.result as { intent_jti: string; job_id: string };
       expect(out.intent_jti).toBeTruthy();
-      expect(out.job_id).toBe('job-1');
+      // EscrowPort owns the on-chain handle; mock provider just acks the start.
+      expect(out.job_id).toMatch(/^inmem_job_/);
       expect(state.open_intents.has(out.intent_jti)).toBe(true);
+      expect(state.escrow_jobs_by_intent.has(out.intent_jti)).toBe(true);
     }
     expect(state.history).toHaveLength(1);
     expect(state.history[0]?.amount_usd).toBe(80);

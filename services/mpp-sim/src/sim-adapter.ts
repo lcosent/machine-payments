@@ -11,6 +11,7 @@ import {
   type MerchantId,
   type SettlementReceiptClaims,
 } from '@autocompute/types';
+import type { LedgerSink, MppReceiptRow } from '@autocompute/reconciler';
 import type {
   DelegationRequest,
   IntentRequest,
@@ -26,6 +27,8 @@ export interface SimAdapterConfig {
   publicKeySpkiPem: string;
   alg: 'EdDSA';
   now?: () => number;
+  /// Optional. Every issued JWT is recorded here on the way out.
+  ledgerSink?: LedgerSink;
 }
 
 export class MppSimAdapter implements MppPort {
@@ -34,6 +37,7 @@ export class MppSimAdapter implements MppPort {
   private readonly publicKeyPromise: Promise<KeyLike>;
   private readonly alg: 'EdDSA';
   private readonly now: () => number;
+  private readonly ledgerSink: LedgerSink | undefined;
 
   constructor(cfg: SimAdapterConfig) {
     this.issuerId = cfg.issuerId;
@@ -41,6 +45,7 @@ export class MppSimAdapter implements MppPort {
     this.now = cfg.now ?? (() => Math.floor(Date.now() / 1000));
     this.privateKeyPromise = importPKCS8(cfg.privateKeyPkcs8Pem, cfg.alg);
     this.publicKeyPromise = importSPKI(cfg.publicKeySpkiPem, cfg.alg);
+    this.ledgerSink = cfg.ledgerSink;
   }
 
   async issueDelegation(req: DelegationRequest): ReturnType<MppPort['issueDelegation']> {
@@ -58,6 +63,21 @@ export class MppSimAdapter implements MppPort {
     };
     const parsed = DelegationClaimsSchema.parse(claims);
     const jwt = await this.sign(parsed);
+    if (this.ledgerSink) {
+      const row: MppReceiptRow = {
+        jti: parsed.jti,
+        kind: 'delegation',
+        task_id: null,
+        agent_id: parsed.sub,
+        rail: null,
+        merchant: null,
+        amount_ceiling_usd: null,
+        final_amount_usd: null,
+        intent_jti: null,
+        intent_hash: null,
+      };
+      await this.ledgerSink.recordMppReceipt(row);
+    }
     return { jwt, claims: parsed };
   }
 
@@ -82,6 +102,20 @@ export class MppSimAdapter implements MppPort {
     };
     const parsed = IntentReceiptClaimsSchema.parse(claims);
     const jwt = await this.sign(parsed);
+    if (this.ledgerSink) {
+      await this.ledgerSink.recordMppReceipt({
+        jti: parsed.jti,
+        kind: 'intent',
+        task_id: parsed.task_id,
+        agent_id: parsed.sub,
+        rail: parsed.rail,
+        merchant: parsed.merchant,
+        amount_ceiling_usd: parsed.amount_ceiling_usd,
+        final_amount_usd: null,
+        intent_jti: null,
+        intent_hash: parsed.intent_hash as `0x${string}`,
+      });
+    }
     return { jwt, claims: parsed };
   }
 
@@ -109,6 +143,20 @@ export class MppSimAdapter implements MppPort {
     };
     const parsed = SettlementReceiptClaimsSchema.parse(claims);
     const jwt = await this.sign(parsed);
+    if (this.ledgerSink) {
+      await this.ledgerSink.recordMppReceipt({
+        jti: parsed.jti,
+        kind: 'settlement',
+        task_id: parsed.task_id,
+        agent_id: parsed.sub,
+        rail: parsed.rail,
+        merchant: parsed.merchant,
+        amount_ceiling_usd: null,
+        final_amount_usd: parsed.final_amount_usd,
+        intent_jti: parsed.intent_jti,
+        intent_hash: null,
+      });
+    }
     return { jwt, claims: parsed };
   }
 

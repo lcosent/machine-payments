@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "0.95.2",
     "@autocompute/mpp-sim": "workspace:*",
     "@autocompute/onchain": "workspace:*",
+    "@autocompute/reconciler": "workspace:*",
     "@autocompute/types": "workspace:*",
     "ulidx": "2.4.1",
     "zod": "3.25.76"

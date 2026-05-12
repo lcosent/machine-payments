@@ -2,6 +2,8 @@ import { ulid } from 'ulidx';
 import type { AgentId, DelegationScope, Jwt, Logger, MerchantId, TaskId } from '@autocompute/types';
 import type { MppPort } from '@autocompute/mpp-sim';
 import { computeIntentHash } from '@autocompute/onchain';
+import type { LedgerSink } from '@autocompute/reconciler';
+import type { EscrowPort } from './escrow-port.js';
 import { checkSpend, type GuardrailContext, type SpendHistoryEntry } from './guardrails.js';
 import type {
   DrawCreditInput,
@@ -55,20 +57,31 @@ export interface HandlerDeps {
   mpp: MppPort;
   providers: ProviderPort;
   credit: CreditPort;
+  /// Required for pay_usdc_escrow + settle_task usdc-rail paths. Either an
+  /// InMemoryEscrowPort (sandbox/demo) or an OnchainEscrowPort (Base Sepolia).
+  escrow: EscrowPort;
   now: () => number;
   logger: Logger;
   cooldown_seconds_between_large_spends: number;
   large_spend_threshold_usd: number;
+  /// Optional. Card charges and credit draws/repays are written here so the
+  /// reconciler sees the same view of the world the MPP sink sees.
+  ledgerSink?: LedgerSink;
 }
 
 export interface AgentRunState {
   history: SpendHistoryEntry[];
   open_intents: Map<string, { task_id: TaskId; amount_ceiling_usd: number; jwt: Jwt }>;
+  /// Maps an open intent's jti to the escrow job_id opened against it. Used
+  /// when settle_task fires so we can call EscrowPort.settle with the right
+  /// onchain handle.
+  escrow_jobs_by_intent: Map<string, string>;
 }
 
 export const makeInitialState = (): AgentRunState => ({
   history: [],
   open_intents: new Map(),
+  escrow_jobs_by_intent: new Map(),
 });
 
 const ctx = (deps: HandlerDeps, state: AgentRunState): GuardrailContext => ({
@@ -192,7 +205,17 @@ const handlePayUsdcEscrow = async (
     ttl_seconds: 600,
   });
 
-  const { job_id, onchain_tx_hash } = await deps.providers.startUsdcJob({
+  // 1. Open the on-chain escrow (or in-memory analogue) — this is where the
+  //    intent_hash is committed and the escrow_opened row hits the ledger.
+  const escrow = await deps.escrow.openJob({
+    task_id: input.task_id,
+    amount_usd: input.amount_usd,
+    intent_hash: intentHash,
+    deadline_unix_sec: at + 60 * 60,
+  });
+
+  // 2. Tell the provider its job has started so it can begin metering.
+  await deps.providers.startUsdcJob({
     merchant: input.merchant,
     amount_usd: input.amount_usd,
     intent_hash: intentHash,
@@ -204,12 +227,14 @@ const handlePayUsdcEscrow = async (
     amount_ceiling_usd: input.amount_usd,
     jwt: intentJwt,
   });
+  state.escrow_jobs_by_intent.set(intent.jti, escrow.job_id);
   recordSpend(state, input.merchant, input.amount_usd, at);
 
   deps.logger.info('pay_usdc_escrow ok', {
     task_id: input.task_id,
     intent_jti: intent.jti,
-    job_id,
+    escrow_job_id: escrow.job_id,
+    onchain_tx_hash: escrow.onchain_tx_hash,
   });
 
   return {
@@ -217,8 +242,8 @@ const handlePayUsdcEscrow = async (
     result: {
       intent_jti: intent.jti,
       intent_hash: intentHash,
-      job_id,
-      onchain_tx_hash,
+      job_id: escrow.job_id,
+      onchain_tx_hash: escrow.onchain_tx_hash ?? undefined,
       requires_hitl: decision.requires_hitl,
     },
   };
@@ -282,6 +307,19 @@ const handlePayVisaCard = async (
   });
   recordSpend(state, input.merchant, input.amount_usd, at);
 
+  if (deps.ledgerSink) {
+    await deps.ledgerSink.recordCardCharge({
+      authorization_id,
+      task_id: input.task_id,
+      agent_id: deps.agent,
+      merchant: input.merchant,
+      amount_usd: input.amount_usd,
+      intent_hash: intentHash,
+      status: 'authorized',
+      intent_jti: intent.jti,
+    });
+  }
+
   deps.logger.info('pay_visa_card ok', {
     task_id: input.task_id,
     intent_jti: intent.jti,
@@ -326,6 +364,21 @@ const handleDrawCredit = async (
   }
   const { onchain_tx_hash } = await deps.credit.draw(input.amount_usd);
   recordSpend(state, 'merchant:credit-pool' as MerchantId, input.amount_usd, at);
+  if (deps.ledgerSink && onchain_tx_hash) {
+    await deps.ledgerSink.recordOnchainEvent({
+      id: ulid(),
+      kind: 'credit_borrowed',
+      task_id: input.task_id,
+      tx_hash: onchain_tx_hash as `0x${string}`,
+      log_index: 0,
+      job_id: null,
+      intent_hash: null,
+      amount_usd: input.amount_usd,
+      final_amount_usd: null,
+      refunded_usd: null,
+      account: deps.agent,
+    });
+  }
   deps.logger.info('draw_credit ok', {
     task_id: input.task_id,
     amount_usd: input.amount_usd,
@@ -338,6 +391,21 @@ const handleRepayCredit = async (
   deps: HandlerDeps,
 ): Promise<HandlerResult<{ onchain_tx_hash: string | undefined }>> => {
   const { onchain_tx_hash } = await deps.credit.repay(input.amount_usd);
+  if (deps.ledgerSink && onchain_tx_hash) {
+    await deps.ledgerSink.recordOnchainEvent({
+      id: ulid(),
+      kind: 'credit_repaid',
+      task_id: input.task_id,
+      tx_hash: onchain_tx_hash as `0x${string}`,
+      log_index: 0,
+      job_id: null,
+      intent_hash: null,
+      amount_usd: input.amount_usd,
+      final_amount_usd: null,
+      refunded_usd: null,
+      account: deps.agent,
+    });
+  }
   deps.logger.info('repay_credit ok', { task_id: input.task_id, amount_usd: input.amount_usd });
   return { ok: true, result: { onchain_tx_hash } };
 };
@@ -369,6 +437,28 @@ const handleSettleTask = async (
     final_amount_usd: input.final_amount_usd,
     merchant_signature: input.merchant_signature,
   });
+
+  // If this intent had an open escrow, settle it on-chain (or via the
+  // in-memory port) so the unified statement's MPP settlement row joins
+  // cleanly with an escrow_settled row.
+  const escrowJobId = state.escrow_jobs_by_intent.get(input.intent_jti);
+  if (escrowJobId) {
+    try {
+      await deps.escrow.settle({
+        task_id: input.task_id,
+        job_id: escrowJobId,
+        final_amount_usd: input.final_amount_usd,
+        provider_signature: input.merchant_signature as `0x${string}`,
+      });
+    } catch (e) {
+      deps.logger.warn('escrow settle failed (continuing with MPP-only settlement)', {
+        task_id: input.task_id,
+        err: (e as Error).message,
+      });
+    }
+    state.escrow_jobs_by_intent.delete(input.intent_jti);
+  }
+
   state.open_intents.delete(input.intent_jti);
   deps.logger.info('settle_task ok', {
     task_id: input.task_id,

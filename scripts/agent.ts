@@ -1,14 +1,19 @@
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose';
 import { ulid } from 'ulidx';
 import {
+  FakeScriptedLlmPort,
   HttpProviderPort,
+  InMemoryEscrowPort,
   type CreditPort,
   type HandlerDeps,
+  type LlmPort,
+  type ScriptedTurn,
   makeInitialState,
   makeLlmFromEnv,
   runAgent,
 } from '@autocompute/agent';
 import { MppSimAdapter } from '@autocompute/mpp-sim';
+import { InMemoryLedgerSink, reconcile } from '@autocompute/reconciler';
 import { makeLogger, type DelegationScope, type MerchantId, type TaskId } from '@autocompute/types';
 
 const log = makeLogger('script.agent');
@@ -31,6 +36,17 @@ const HYPER_BASE = env['HYPERSCALER_BASE_URL'] ?? 'http://localhost:3000/api/pro
 const TASK_DESC = env['TASK_DESCRIPTION'] ?? 'render 60s of 4K video, deadline 2h';
 const BUDGET_USD = Number(env['TASK_BUDGET_USD'] ?? '200');
 
+const synthTxHash = (): `0x${string}` => {
+  // 32-byte hex matching a real Ethereum tx hash. ulid()+random for
+  // uniqueness even when many calls land in the same millisecond.
+  const a = ulid().toLowerCase();
+  const b = Math.random().toString(36).slice(2);
+  return `0x${(a + b)
+    .padEnd(64, '0')
+    .slice(0, 64)
+    .replace(/[^0-9a-f]/g, '0')}` as `0x${string}`;
+};
+
 const inMemoryCredit = (
   initialAvailableUsd = 500,
 ): CreditPort & {
@@ -43,19 +59,93 @@ const inMemoryCredit = (
       if (amount_usd > available) throw new Error('credit pool dry');
       available -= amount_usd;
       principal += amount_usd;
-      return { onchain_tx_hash: `0xinmem${ulid().slice(0, 8).toLowerCase()}` };
+      return { onchain_tx_hash: synthTxHash() };
     },
     async repay(amount_usd: number) {
       const paid = Math.min(amount_usd, principal);
       principal -= paid;
       available += paid;
-      return { onchain_tx_hash: `0xinmem${ulid().slice(0, 8).toLowerCase()}` };
+      return { onchain_tx_hash: synthTxHash() };
     },
     state() {
       return { available_usd: available, principal_usd: principal };
     },
   };
 };
+
+/// Canned tool-use plan the FakeScriptedLlmPort runs when no real LLM
+/// backend is configured. Mirrors the design.md §5c overrun flow:
+/// quote → pay dcomp → draw credit → settle → end.
+const buildFakeScript = (taskId: TaskId): ReadonlyArray<ScriptedTurn> => [
+  {
+    text: 'Quoting providers.',
+    tool_calls: [
+      {
+        name: 'quote_providers',
+        input: {
+          task_id: taskId,
+          description: TASK_DESC,
+          budget_ceiling_usd: BUDGET_USD,
+        },
+      },
+    ],
+  },
+  {
+    text: 'Decentralized provider is cheaper and faster — opening USDC escrow.',
+    tool_calls: [
+      {
+        name: 'pay_usdc_escrow',
+        input: {
+          task_id: taskId,
+          merchant: DCOMP,
+          amount_usd: 80,
+          rationale: 'dcomp quoted within budget; faster than hyperscaler',
+        },
+      },
+    ],
+  },
+  {
+    text: 'Projected cost rose mid-job. Drawing $50 from the credit line.',
+    tool_calls: [
+      {
+        name: 'draw_credit',
+        input: {
+          task_id: taskId,
+          amount_usd: 50,
+          rationale: 'projected overrun beyond initial $80 ceiling',
+        },
+      },
+    ],
+  },
+  // Settle for the original $80 — the on-chain Escrow.sol contract enforces
+  // settlement ≤ amount_ceiling, so we honour that in the scripted plan too.
+  {
+    text: 'Job complete. Countersigning settlement.',
+    tool_calls: [
+      {
+        name: 'settle_task',
+        input: {
+          task_id: taskId,
+          intent_jti: '__LAST_INTENT__', // resolved at dispatch time below
+          final_amount_usd: 78,
+          merchant_signature: '0xfake-merchant-sig',
+        },
+      },
+    ],
+  },
+  {
+    text: 'Repaying the credit-line draw.',
+    tool_calls: [
+      {
+        name: 'repay_credit',
+        input: { task_id: taskId, amount_usd: 50 },
+      },
+    ],
+  },
+  {
+    text: 'Task settled. Statement closed.',
+  },
+];
 
 const main = async () => {
   log.info('boot', {
@@ -65,12 +155,14 @@ const main = async () => {
     budget_usd: BUDGET_USD,
   });
 
+  const ledgerSink = new InMemoryLedgerSink();
   const { publicKey, privateKey } = await generateKeyPair('EdDSA', { extractable: true });
   const mpp = new MppSimAdapter({
     issuerId: 'mpp-sim://demo/issuer',
     privateKeyPkcs8Pem: await exportPKCS8(privateKey),
     publicKeySpkiPem: await exportSPKI(publicKey),
     alg: 'EdDSA',
+    ledgerSink,
   });
 
   const { jwt: delegationJwt, claims: delegation } = await mpp.issueDelegation({
@@ -88,16 +180,31 @@ const main = async () => {
     hyperscalerBaseUrl: HYPER_BASE,
   });
   const credit = inMemoryCredit(500);
+  const escrow = new InMemoryEscrowPort({ ledgerSink });
 
-  let llm;
-  try {
-    llm = makeLlmFromEnv();
-  } catch (e) {
-    log.error(
-      'unable to build LLM port — set LLM_BACKEND + the relevant API key / model id (see .env.example)',
-      { err: (e as Error).message },
-    );
-    process.exit(1);
+  const taskId = `task_${ulid()}` as TaskId;
+  const task = {
+    task_id: taskId,
+    description: TASK_DESC,
+    budget_ceiling_usd: BUDGET_USD,
+    deadline_iso: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  };
+
+  let llm: LlmPort;
+  const backend = env['LLM_BACKEND'];
+  if (!backend) {
+    log.info('no LLM_BACKEND set — running scripted fallback plan');
+    llm = wrapWithIntentResolution(new FakeScriptedLlmPort({ script: buildFakeScript(taskId) }));
+  } else {
+    try {
+      llm = makeLlmFromEnv();
+    } catch (e) {
+      log.error(
+        'unable to build LLM port from env — falling back to scripted demo. Set LLM_BACKEND + API key to use a real model.',
+        { err: (e as Error).message },
+      );
+      llm = wrapWithIntentResolution(new FakeScriptedLlmPort({ script: buildFakeScript(taskId) }));
+    }
   }
   log.info('llm', { backend: llm.name, model: llm.model });
 
@@ -108,19 +215,15 @@ const main = async () => {
     mpp,
     providers,
     credit,
+    escrow,
     now: () => Math.floor(Date.now() / 1000),
     logger: log.child('agent'),
     cooldown_seconds_between_large_spends: 60,
     large_spend_threshold_usd: 150,
+    ledgerSink,
   };
 
   const state = makeInitialState();
-  const task = {
-    task_id: `task_${ulid()}` as TaskId,
-    description: TASK_DESC,
-    budget_ceiling_usd: BUDGET_USD,
-    deadline_iso: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-  };
   log.info('task submitted', task);
 
   const result = await runAgent(llm, deps, state, task);
@@ -149,6 +252,67 @@ const main = async () => {
       total_spent_usd: state.history.reduce((acc, h) => acc + h.amount_usd, 0),
     });
   }
+
+  const snapshot = await ledgerSink.snapshot();
+  log.info('ledger snapshot', {
+    mpp_receipts: snapshot.mpp_receipts.length,
+    onchain_events: snapshot.onchain_events.length,
+    card_charges: snapshot.card_charges.length,
+  });
+
+  const out = reconcile(snapshot);
+  log.info('unified statement (reconciled)', {
+    rows: out.statement,
+    anomalies: out.anomalies,
+  });
+};
+
+/// The scripted plan references `__LAST_INTENT__` as a placeholder for the
+/// settle_task input. This shim rewrites that placeholder using the most
+/// recent intent_jti the harness has seen come back as a tool_result, so
+/// the scripted demo doesn't need to know the random jti up front.
+const wrapWithIntentResolution = (inner: LlmPort): LlmPort => {
+  let lastIntentJti: string | null = null;
+  return {
+    name: inner.name,
+    model: inner.model,
+    async turn(req) {
+      // Scan the latest user tool_results for an intent_jti to remember.
+      for (let i = req.messages.length - 1; i >= 0; i--) {
+        const m = req.messages[i];
+        if (!m || m.role !== 'user' || m.kind !== 'tool_results') continue;
+        for (const r of m.results) {
+          try {
+            const parsed = JSON.parse(r.content) as { intent_jti?: string };
+            if (parsed.intent_jti) {
+              lastIntentJti = parsed.intent_jti;
+              break;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (lastIntentJti) break;
+      }
+      const resp = await inner.turn(req);
+      if (!lastIntentJti) return resp;
+      const rewritten = resp.tool_calls.map((tc) => {
+        if (
+          tc.name === 'settle_task' &&
+          typeof tc.input === 'object' &&
+          tc.input !== null &&
+          (tc.input as Record<string, unknown>)['intent_jti'] === '__LAST_INTENT__'
+        ) {
+          return {
+            ...tc,
+            input: { ...(tc.input as Record<string, unknown>), intent_jti: lastIntentJti },
+          };
+        }
+        return tc;
+      });
+      return { ...resp, tool_calls: rewritten };
+    },
+  };
 };
 
 main().catch((e) => {
