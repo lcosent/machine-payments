@@ -16,7 +16,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "demo": "tsx scripts/demo.ts",
-    "script:agent": "tsx scripts/agent.ts"
+    "script:agent": "tsx scripts/agent.ts",
+    "script:provision-wallet": "tsx scripts/provision-wallet.ts"
   },
   "devDependencies": {
     "@autocompute/agent": "workspace:*",
@@ -24,6 +25,7 @@
     "@autocompute/onchain": "workspace:*",
     "@autocompute/reconciler": "workspace:*",
     "@autocompute/types": "workspace:*",
+    "@privy-io/server-auth": "1.32.5",
     "@types/node": "22.10.5",
     "@typescript-eslint/eslint-plugin": "8.20.0",
     "@typescript-eslint/parser": "8.20.0",

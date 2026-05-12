@@ -15,7 +15,15 @@ import {
   makeLlmFromEnv,
   runAgent,
 } from '@autocompute/agent';
-import { makeEoaWallet, type Address, type Hex } from '@autocompute/onchain';
+import {
+  loadPrivyClient,
+  makeEoaWallet,
+  makePrivyWallet,
+  readPrivyEnv,
+  type Address,
+  type AgentWallet,
+  type Hex,
+} from '@autocompute/onchain';
 import { MppSimAdapter } from '@autocompute/mpp-sim';
 import {
   InMemoryLedgerSink,
@@ -193,25 +201,48 @@ const main = async () => {
     dcompBaseUrl: DCOMP_BASE,
     hyperscalerBaseUrl: HYPER_BASE,
   });
-  // Onchain swap-in. If ESCROW_ADDRESS + CREDIT_LINE_ADDRESS + AGENT_PRIVATE_KEY +
-  // BASE_SEPOLIA_RPC are all set, replace the in-memory ports with viem-backed
-  // ones that hit the deployed contracts. Drop-in; nothing else changes.
+  // Onchain swap-in. We need: deployed contracts, an RPC, USDC address, AND
+  // some way to source a signer. Two signer paths are supported:
+  //   (a) AGENT_PRIVATE_KEY  — a raw hex private key (simplest; you hold it).
+  //   (b) Privy server wallet — set PRIVY_APP_ID + PRIVY_APP_SECRET +
+  //       PRIVY_WALLET_ID + PRIVY_WALLET_ADDRESS. Mint the wallet first via
+  //       `pnpm script:provision-wallet`, then fund the printed address with
+  //       Base Sepolia ETH + USDC. Privy custodies the key; we just sign.
+  const privyCfg = readPrivyEnv(env);
+  const hasPrivyWallet = !!privyCfg && !!env['PRIVY_WALLET_ID'] && !!env['PRIVY_WALLET_ADDRESS'];
+  const hasEoaKey = !!env['AGENT_PRIVATE_KEY'];
   const wantOnchain =
     env['ESCROW_ADDRESS'] &&
     env['CREDIT_LINE_ADDRESS'] &&
-    env['AGENT_PRIVATE_KEY'] &&
     env['BASE_SEPOLIA_RPC'] &&
-    env['USDC_ADDRESS'];
+    env['USDC_ADDRESS'] &&
+    (hasEoaKey || hasPrivyWallet);
 
   let credit: CreditPort & { state?(): { available_usd: number; principal_usd: number } };
   let escrow: EscrowPort;
 
   if (wantOnchain) {
+    let wallet: AgentWallet;
+    if (hasPrivyWallet) {
+      log.info('using Privy server wallet', {
+        wallet_id: env['PRIVY_WALLET_ID'],
+        address: env['PRIVY_WALLET_ADDRESS'],
+      });
+      const { accountFactory } = await loadPrivyClient(privyCfg!);
+      wallet = await makePrivyWallet({
+        rpcUrl: env['BASE_SEPOLIA_RPC']!,
+        walletId: env['PRIVY_WALLET_ID']!,
+        address: env['PRIVY_WALLET_ADDRESS']! as Address,
+        accountFactory,
+      });
+    } else {
+      wallet = makeEoaWallet(env['AGENT_PRIVATE_KEY'] as Hex, env['BASE_SEPOLIA_RPC']!);
+    }
     log.info('using onchain ports', {
       escrow: env['ESCROW_ADDRESS'],
       creditLine: env['CREDIT_LINE_ADDRESS'],
+      agent_address: wallet.address,
     });
-    const wallet = makeEoaWallet(env['AGENT_PRIVATE_KEY'] as Hex, env['BASE_SEPOLIA_RPC']!);
     credit = new OnchainCreditPort({
       wallet,
       usdc: env['USDC_ADDRESS']! as Address,

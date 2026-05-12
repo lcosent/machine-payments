@@ -10,6 +10,7 @@
     "./abis": "./src/abis.ts",
     "./client": "./src/client.ts",
     "./wallet": "./src/wallet.ts",
+    "./privy-wallet": "./src/privy-wallet.ts",
     "./escrow": "./src/escrow.ts",
     "./credit-line": "./src/credit-line.ts",
     "./intent-hash": "./src/intent-hash.ts"
@@ -20,6 +21,14 @@
   },
   "dependencies": {
     "@autocompute/types": "workspace:*",
-    "viem": "2.21.55"
+    "viem": "2.48.11"
+  },
+  "peerDependencies": {
+    "@privy-io/server-auth": "^1.32.0"
+  },
+  "peerDependenciesMeta": {
+    "@privy-io/server-auth": {
+      "optional": true
+    }
   }
 }

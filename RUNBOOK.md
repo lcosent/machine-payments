@@ -155,7 +155,41 @@ export CREDIT_LINE_SEED_USDC6=10000000      # 10 USDC into the pool
 # Copy printed ESCROW_ADDRESS and CREDIT_LINE_ADDRESS into .env
 ```
 
-### 4. Run the agent against the deployed contracts
+### 4. Provision the agent wallet
+
+Pick one of the two signer options.
+
+**Option A: raw private key (you hold it)**
+
+```bash
+# .env
+AGENT_PRIVATE_KEY=0x...   # your testnet key; needs ETH for gas + USDC
+```
+
+**Option B: Privy server wallet (recommended — Privy custodies the key)**
+
+1. Sign up at https://dashboard.privy.io and create an app.
+2. Add the credentials to `.env`:
+
+   ```bash
+   PRIVY_APP_ID=...
+   PRIVY_APP_SECRET=...
+   ```
+
+3. Mint a wallet:
+
+   ```bash
+   pnpm script:provision-wallet
+   ```
+
+   The script writes `PRIVY_WALLET_ID` + `PRIVY_WALLET_ADDRESS` back into
+   `.env` automatically and prints the address.
+
+4. Fund the printed address with Base Sepolia ETH + USDC. Whichever faucet
+   route you choose is fine — the wallet is now a regular EOA on Base
+   Sepolia, controlled by Privy.
+
+### 5. Run the agent against the deployed contracts
 
 Add to `.env`:
 
@@ -164,12 +198,12 @@ BASE_SEPOLIA_RPC=https://sepolia.base.org
 USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
 ESCROW_ADDRESS=0x...     # from deploy
 CREDIT_LINE_ADDRESS=0x... # from deploy
-AGENT_PRIVATE_KEY=0x...  # the agent's wallet (needs USDC for collateral)
 ```
 
-When all five are set, `scripts/agent.ts` swaps in `OnchainEscrowPort` +
-`OnchainCreditPort` automatically. No code change needed — the script
-logs `using onchain ports` on boot to confirm.
+When the address vars + a signer (A or B) are present, `scripts/agent.ts`
+swaps in `OnchainEscrowPort` + `OnchainCreditPort` automatically. On
+boot you'll see either `using Privy server wallet` (option B) or just
+`using onchain ports` (option A).
 
 ```bash
 pnpm dev                  # Terminal 1
