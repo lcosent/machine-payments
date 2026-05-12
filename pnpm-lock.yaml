@@ -8,6 +8,15 @@ importers:
 
   .:
     devDependencies:
+      '@autocompute/agent':
+        specifier: workspace:*
+        version: link:apps/agent
+      '@autocompute/mpp-sim':
+        specifier: workspace:*
+        version: link:services/mpp-sim
+      '@autocompute/types':
+        specifier: workspace:*
+        version: link:packages/types
       '@types/node':
         specifier: 22.10.5
         version: 22.10.5
@@ -20,6 +29,9 @@ importers:
       eslint:
         specifier: 9.18.0
         version: 9.18.0
+      jose:
+        specifier: 5.9.6
+        version: 5.9.6
       prettier:
         specifier: 3.4.2
         version: 3.4.2
@@ -29,6 +41,9 @@ importers:
       typescript:
         specifier: 5.7.3
         version: 5.7.3
+      ulidx:
+        specifier: 2.4.1
+        version: 2.4.1
       vitest:
         specifier: 2.1.8
         version: 2.1.8(@types/node@22.10.5)
