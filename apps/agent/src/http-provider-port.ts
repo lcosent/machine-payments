@@ -1,3 +1,4 @@
+import type { Address } from '@autocompute/onchain';
 import type { MerchantId, TaskId } from '@autocompute/types';
 import type { ProviderPort, ProviderQuoteOut } from './handlers.js';
 import type { QuoteProvidersInput } from './tools.js';
@@ -118,12 +119,46 @@ export class HttpProviderPort implements ProviderPort {
   async finalSettlement(input: {
     job_id: string;
     final_amount_usd: number;
-  }): Promise<{ merchant_signature: string }> {
+    /// Pass these on the Tier 3 path so the provider signs the real Escrow
+    /// digest (EIP-191 over keccak256(escrow_addr, job_id_uint, finalUsdc6)).
+    /// Omit on Tier 1/2 and the provider returns its mock-hash signature.
+    escrow_address?: Address;
+    job_id_uint?: string;
+  }): Promise<{ merchant_signature: `0x${string}` }> {
+    const body: Record<string, unknown> = {
+      job_id: input.job_id,
+      final_amount_usd: input.final_amount_usd,
+    };
+    if (input.escrow_address) body['escrow_address'] = input.escrow_address;
+    if (input.job_id_uint) body['job_id_uint'] = input.job_id_uint;
     const r = await this.postJson<DcompSettleResp>(
       `${this.dcompBaseUrl}/settle`,
-      JSON.stringify(input),
+      JSON.stringify(body),
     );
-    return { merchant_signature: r.merchant_signature };
+    return { merchant_signature: r.merchant_signature as `0x${string}` };
+  }
+
+  /// Resolve the on-chain identity of a merchant. Used by Tier 3 so the
+  /// agent passes the provider's address to Escrow.openJob, which is then
+  /// the only address whose signature settle() will accept. Returns null
+  /// when the provider doesn't expose an identity endpoint.
+  async getProviderAddress(merchant: MerchantId): Promise<Address | null> {
+    if (merchant !== ('merchant:dcomp-mock' as MerchantId)) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      const resp = await this.fetchImpl(`${this.dcompBaseUrl}/identity`, { signal: ctrl.signal });
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as { provider_address?: string };
+      if (!data.provider_address || !/^0x[0-9a-fA-F]{40}$/.test(data.provider_address)) {
+        return null;
+      }
+      return data.provider_address as Address;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async postJson<T>(url: string, body: string): Promise<T> {

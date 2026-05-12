@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@autocompute/mpp-sim": "workspace:*",
+    "@autocompute/onchain": "workspace:*",
     "@autocompute/types": "workspace:*",
     "next": "15.1.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "ulidx": "2.4.1",
+    "viem": "2.21.55",
     "zod": "3.25.76"
   },
   "devDependencies": {

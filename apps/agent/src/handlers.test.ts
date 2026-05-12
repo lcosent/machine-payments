@@ -50,7 +50,7 @@ const mockProviders = (): ProviderPort => ({
   ],
   startUsdcJob: async () => ({ job_id: 'job-1', onchain_tx_hash: '0xdeadbeef' }),
   chargeCard: async () => ({ authorization_id: 'auth-1' }),
-  finalSettlement: async () => ({ merchant_signature: '0xmerchsig' }),
+  finalSettlement: async () => ({ merchant_signature: '0xmerchsig' as `0x${string}` }),
 });
 
 const mockCredit = (): CreditPort => ({

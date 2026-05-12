@@ -267,6 +267,7 @@ const main = async () => {
     cooldown_seconds_between_large_spends: 60,
     large_spend_threshold_usd: 150,
     ledgerSink,
+    ...(wantOnchain ? { escrowAddress: env['ESCROW_ADDRESS']! as `0x${string}` } : {}),
   };
 
   const state = makeInitialState();

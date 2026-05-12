@@ -14,5 +14,9 @@
   },
   "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
   "exclude": ["node_modules", ".next"],
-  "references": [{ "path": "../../packages/types" }, { "path": "../../services/mpp-sim" }]
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/onchain" },
+    { "path": "../../services/mpp-sim" }
+  ]
 }

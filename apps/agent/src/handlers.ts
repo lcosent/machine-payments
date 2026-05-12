@@ -42,7 +42,14 @@ export interface ProviderPort {
   finalSettlement(input: {
     job_id: string;
     final_amount_usd: number;
-  }): Promise<{ merchant_signature: string }>;
+    /// Tier 3: triggers a real ECDSA signature over the Escrow digest.
+    escrow_address?: `0x${string}`;
+    job_id_uint?: string;
+  }): Promise<{ merchant_signature: `0x${string}` }>;
+  /// Returns the on-chain identity of the merchant, used when opening an
+  /// onchain escrow so the provider's signature can later satisfy settle().
+  /// Returns null on Tier 1/2 (no onchain identity needed).
+  getProviderAddress?(merchant: MerchantId): Promise<`0x${string}` | null>;
 }
 
 export interface CreditPort {
@@ -60,6 +67,10 @@ export interface HandlerDeps {
   /// Required for pay_usdc_escrow + settle_task usdc-rail paths. Either an
   /// InMemoryEscrowPort (sandbox/demo) or an OnchainEscrowPort (Base Sepolia).
   escrow: EscrowPort;
+  /// Tier 3 only. When set, settle_task asks the provider to sign over this
+  /// address + the uint256 jobId + final amount, producing a signature that
+  /// Escrow.sol's settle() will recover correctly.
+  escrowAddress?: `0x${string}`;
   now: () => number;
   logger: Logger;
   cooldown_seconds_between_large_spends: number;
@@ -207,12 +218,19 @@ const handlePayUsdcEscrow = async (
 
   // 1. Open the on-chain escrow (or in-memory analogue) — this is where the
   //    intent_hash is committed and the escrow_opened row hits the ledger.
-  const escrow = await deps.escrow.openJob({
+  //    On Tier 3 we look up the provider's on-chain EOA so Escrow.openJob
+  //    records the address whose signature settle() will later check.
+  const providerAddress = deps.providers.getProviderAddress
+    ? await deps.providers.getProviderAddress(input.merchant)
+    : null;
+  const openInput: Parameters<typeof deps.escrow.openJob>[0] = {
     task_id: input.task_id,
     amount_usd: input.amount_usd,
     intent_hash: intentHash,
     deadline_unix_sec: at + 60 * 60,
-  });
+  };
+  if (providerAddress) openInput.provider_address = providerAddress;
+  const escrow = await deps.escrow.openJob(openInput);
 
   // 2. Tell the provider its job has started so it can begin metering.
   await deps.providers.startUsdcJob({
@@ -432,23 +450,46 @@ const handleSettleTask = async (
       requires_hitl: false,
     };
   }
+  // If this intent had an open escrow, fetch the real merchant signature
+  // from the provider before countersigning. On Tier 3 the signature must
+  // be a valid ECDSA recovery for Escrow.sol's settle() check; on Tier 1/2
+  // any signature (including the LLM-supplied one) works because the
+  // in-memory escrow port doesn't verify.
+  const escrowJobId = state.escrow_jobs_by_intent.get(input.intent_jti);
+  let merchantSignature = input.merchant_signature;
+  if (escrowJobId) {
+    try {
+      const fetchInput: Parameters<typeof deps.providers.finalSettlement>[0] = {
+        job_id: escrowJobId,
+        final_amount_usd: input.final_amount_usd,
+      };
+      if (deps.escrowAddress && /^\d+$/.test(escrowJobId)) {
+        fetchInput.escrow_address = deps.escrowAddress;
+        fetchInput.job_id_uint = escrowJobId;
+      }
+      const fetched = await deps.providers.finalSettlement(fetchInput);
+      merchantSignature = fetched.merchant_signature;
+    } catch (e) {
+      deps.logger.warn('finalSettlement fetch failed, using LLM-supplied signature', {
+        task_id: input.task_id,
+        err: (e as Error).message,
+      });
+    }
+  }
+
   const { claims } = await deps.mpp.countersignSettlement({
     intent_jwt: open.jwt,
     final_amount_usd: input.final_amount_usd,
-    merchant_signature: input.merchant_signature,
+    merchant_signature: merchantSignature,
   });
 
-  // If this intent had an open escrow, settle it on-chain (or via the
-  // in-memory port) so the unified statement's MPP settlement row joins
-  // cleanly with an escrow_settled row.
-  const escrowJobId = state.escrow_jobs_by_intent.get(input.intent_jti);
   if (escrowJobId) {
     try {
       await deps.escrow.settle({
         task_id: input.task_id,
         job_id: escrowJobId,
         final_amount_usd: input.final_amount_usd,
-        provider_signature: input.merchant_signature as `0x${string}`,
+        provider_signature: merchantSignature as `0x${string}`,
       });
     } catch (e) {
       deps.logger.warn('escrow settle failed (continuing with MPP-only settlement)', {

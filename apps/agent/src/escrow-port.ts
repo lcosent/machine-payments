@@ -16,6 +16,10 @@ export interface OpenEscrowInput {
   amount_usd: number;
   intent_hash: Hex;
   deadline_unix_sec: number;
+  /// Tier 3: the provider's EOA. The contract uses it as the only signer
+  /// authorized to settle the job. Defaults to the agent's own wallet
+  /// (single-actor PoC mode) when omitted by the caller.
+  provider_address?: Address;
 }
 export interface OpenEscrowOutput {
   job_id: string;
@@ -131,7 +135,9 @@ export class OnchainEscrowPort implements EscrowPort {
       escrow: this.cfg.escrow,
       usdc: this.cfg.usdc,
       wallet: this.cfg.wallet,
-      provider: this.cfg.wallet.address, // PoC: provider is the wallet itself
+      // Real provider EOA when known (Tier 3 with mock-identity lookup),
+      // else the agent's own wallet (single-actor PoC fallback).
+      provider: input.provider_address ?? this.cfg.wallet.address,
       amountUsd: input.amount_usd,
       deadlineUnixSec: input.deadline_unix_sec,
       intentHash: input.intent_hash,
