@@ -2,6 +2,8 @@ export * from './guardrails.js';
 export * from './tools.js';
 export * from './handlers.js';
 export * from './http-provider-port.js';
+export * from './onchain-credit-port.js';
+export * from './session-key-policy.js';
 export * from './llm-port.js';
 export * from './anthropic-port.js';
 export * from './openai-compat-port.js';

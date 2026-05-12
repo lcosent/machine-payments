@@ -1,3 +1,4 @@
+export type { Address, Hex } from 'viem';
 export * from './abis.js';
 export * from './client.js';
 export * from './wallet.js';
