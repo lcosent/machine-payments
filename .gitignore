@@ -24,3 +24,6 @@ contracts/broadcast/**/*-latest.json
 # Supabase
 supabase/.branches/
 supabase/.temp/
+
+# Claude
+CLAUDE.md
