@@ -1,0 +1,43 @@
+{
+  "name": "machine-payments",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @autocompute/web dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "demo": "tsx scripts/demo.ts",
+    "script:agent": "tsx --env-file-if-exists=.env scripts/agent.ts",
+    "script:provision-wallet": "tsx --env-file-if-exists=.env scripts/provision-wallet.ts"
+  },
+  "devDependencies": {
+    "@autocompute/agent": "workspace:*",
+    "@autocompute/mpp-sim": "workspace:*",
+    "@autocompute/onchain": "workspace:*",
+    "@autocompute/reconciler": "workspace:*",
+    "@autocompute/types": "workspace:*",
+    "@privy-io/server-auth": "1.32.5",
+    "@types/node": "22.10.5",
+    "@typescript-eslint/eslint-plugin": "8.20.0",
+    "@typescript-eslint/parser": "8.20.0",
+    "eslint": "9.18.0",
+    "jose": "5.9.6",
+    "prettier": "3.4.2",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "ulidx": "2.4.1",
+    "vitest": "2.1.8"
+  },
+  "dependencies": {
+    "postgres": "3.4.5"
+  }
+}
