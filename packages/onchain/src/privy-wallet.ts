@@ -1,5 +1,5 @@
 import { createWalletClient, http, type Address } from 'viem';
-import { baseSepolia } from 'viem/chains';
+import { sepolia } from 'viem/chains';
 import type { AgentWallet } from './wallet.js';
 
 /// Subset of @privy-io/server-auth we lean on. Defined as a port so tests can
@@ -47,7 +47,7 @@ export const makePrivyWallet = async (cfg: PrivyWalletConfig): Promise<AgentWall
   const client = createWalletClient({
     // viem's Account discriminates by `type`; Privy's account is `local`.
     account: account as unknown as Parameters<typeof createWalletClient>[0]['account'],
-    chain: baseSepolia,
+    chain: sepolia,
     transport: http(cfg.rpcUrl),
   });
   return {

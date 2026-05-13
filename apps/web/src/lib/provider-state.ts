@@ -43,8 +43,24 @@ export interface HyperscalerAuthorization {
   created_at: number;
 }
 
-const dcompJobs = new Map<string, DcompJob>();
-const hyperscalerAuths = new Map<string, HyperscalerAuthorization>();
+// Persist mock-provider state on globalThis so Next.js dev HMR / split
+// route-module instantiation can't fork the store. Without this, /start and
+// /settle end up holding different Map instances and the agent's settle call
+// 404s on a job_id the /start instance actually has. The dcomp signing
+// keypair shares the same risk — if /identity and /settle each generate
+// their own keypair, the openJob provider field and the settle signature
+// won't agree, and Escrow.sol's ECDSA check reverts with BadProviderSignature.
+type ProviderStateGlobal = {
+  __autocomputeDcompJobs?: Map<string, DcompJob>;
+  __autocomputeHyperscalerAuths?: Map<string, HyperscalerAuthorization>;
+  __autocomputeDcompProviderAccount?: PrivateKeyAccount;
+};
+const _g = globalThis as ProviderStateGlobal;
+const dcompJobs = (_g.__autocomputeDcompJobs ??= new Map<string, DcompJob>());
+const hyperscalerAuths = (_g.__autocomputeHyperscalerAuths ??= new Map<
+  string,
+  HyperscalerAuthorization
+>());
 
 export const DcompStore = {
   open(input: { task_id: string; intent_hash: string; amount_ceiling_usd: number }): DcompJob {
@@ -189,7 +205,8 @@ const loadDcompProviderAccount = (): PrivateKeyAccount => {
   return privateKeyToAccount(generatePrivateKey());
 };
 
-const dcompProviderAccount: PrivateKeyAccount = loadDcompProviderAccount();
+const dcompProviderAccount: PrivateKeyAccount = (_g.__autocomputeDcompProviderAccount ??=
+  loadDcompProviderAccount());
 
 export const DcompProviderIdentity = {
   address(): Address {

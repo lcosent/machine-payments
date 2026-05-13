@@ -16,8 +16,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "demo": "tsx scripts/demo.ts",
-    "script:agent": "tsx scripts/agent.ts",
-    "script:provision-wallet": "tsx scripts/provision-wallet.ts"
+    "script:agent": "tsx --env-file-if-exists=.env scripts/agent.ts",
+    "script:provision-wallet": "tsx --env-file-if-exists=.env scripts/provision-wallet.ts"
   },
   "devDependencies": {
     "@autocompute/agent": "workspace:*",
@@ -36,5 +36,8 @@
     "typescript": "5.7.3",
     "ulidx": "2.4.1",
     "vitest": "2.1.8"
+  },
+  "dependencies": {
+    "postgres": "3.4.5"
   }
 }

@@ -87,12 +87,19 @@ export interface AgentRunState {
   /// when settle_task fires so we can call EscrowPort.settle with the right
   /// onchain handle.
   escrow_jobs_by_intent: Map<string, string>;
+  /// Maps an open intent's jti to the provider-side (dcomp) job id. The
+  /// provider has its own internal job id distinct from the on-chain
+  /// Escrow.openJob return; both are needed at settle time — the on-chain
+  /// id goes into Escrow.settle, the provider id goes into the HTTP /settle
+  /// call to pull a real ECDSA signature.
+  provider_jobs_by_intent: Map<string, string>;
 }
 
 export const makeInitialState = (): AgentRunState => ({
   history: [],
   open_intents: new Map(),
   escrow_jobs_by_intent: new Map(),
+  provider_jobs_by_intent: new Map(),
 });
 
 const ctx = (deps: HandlerDeps, state: AgentRunState): GuardrailContext => ({
@@ -233,7 +240,10 @@ const handlePayUsdcEscrow = async (
   const escrow = await deps.escrow.openJob(openInput);
 
   // 2. Tell the provider its job has started so it can begin metering.
-  await deps.providers.startUsdcJob({
+  //    Capture the provider's internal job_id; it's distinct from the
+  //    on-chain Escrow.openJob return and is what dcomp's /settle endpoint
+  //    keys off when producing the merchant signature.
+  const providerJob = await deps.providers.startUsdcJob({
     merchant: input.merchant,
     amount_usd: input.amount_usd,
     intent_hash: intentHash,
@@ -246,6 +256,7 @@ const handlePayUsdcEscrow = async (
     jwt: intentJwt,
   });
   state.escrow_jobs_by_intent.set(intent.jti, escrow.job_id);
+  state.provider_jobs_by_intent.set(intent.jti, providerJob.job_id);
   recordSpend(state, input.merchant, input.amount_usd, at);
 
   deps.logger.info('pay_usdc_escrow ok', {
@@ -455,12 +466,19 @@ const handleSettleTask = async (
   // be a valid ECDSA recovery for Escrow.sol's settle() check; on Tier 1/2
   // any signature (including the LLM-supplied one) works because the
   // in-memory escrow port doesn't verify.
+  //
+  // The provider keys its store by its own job_id (issued at startUsdcJob),
+  // so we look that up — distinct from the on-chain Escrow.openJob id, which
+  // we still pass via escrow_address + job_id_uint so the signature recovers
+  // against the right (escrowAddress, jobId, finalAmount) digest.
   const escrowJobId = state.escrow_jobs_by_intent.get(input.intent_jti);
+  const providerJobId =
+    state.provider_jobs_by_intent.get(input.intent_jti) ?? escrowJobId;
   let merchantSignature = input.merchant_signature;
-  if (escrowJobId) {
+  if (escrowJobId && providerJobId) {
     try {
       const fetchInput: Parameters<typeof deps.providers.finalSettlement>[0] = {
-        job_id: escrowJobId,
+        job_id: providerJobId,
         final_amount_usd: input.final_amount_usd,
       };
       if (deps.escrowAddress && /^\d+$/.test(escrowJobId)) {

@@ -30,12 +30,13 @@ export class OnchainCreditPort implements CreditPort {
 
   async draw(amount_usd: number): Promise<{ onchain_tx_hash: Hex }> {
     this.cfg.sessionKeyPolicy?.({ kind: 'draw', amount_usd });
-    const tx = await drawCredit({
+    const { borrowTx } = await drawCredit({
       creditLine: this.cfg.creditLine,
+      usdc: this.cfg.usdc,
       wallet: this.cfg.wallet,
       amountUsd: amount_usd,
     });
-    return { onchain_tx_hash: tx };
+    return { onchain_tx_hash: borrowTx };
   }
 
   async repay(amount_usd: number): Promise<{ onchain_tx_hash: Hex }> {

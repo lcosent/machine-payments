@@ -1,4 +1,5 @@
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose';
+import postgres from 'postgres';
 import { ulid } from 'ulidx';
 import {
   FakeScriptedLlmPort,
@@ -93,6 +94,14 @@ const inMemoryCredit = (
 /// Canned tool-use plan the FakeScriptedLlmPort runs when no real LLM
 /// backend is configured. Mirrors the design.md §5c overrun flow:
 /// quote → pay dcomp → draw credit → settle → end.
+///
+/// Amounts are deliberately small (≤$5/leg) so the Tier 3 onchain demo
+/// runs inside a ~20 USDC testnet faucet budget. The flow itself is
+/// identical to a production-sized run; only the numerals scale.
+const ESCROW_USD = 4;
+const CREDIT_USD = 2;
+const SETTLE_USD = 3.9; // ≤ ESCROW_USD; refunds 0.1 USDC to the agent
+const REPAY_USD = CREDIT_USD;
 const buildFakeScript = (taskId: TaskId): ReadonlyArray<ScriptedTurn> => [
   {
     text: 'Quoting providers.',
@@ -108,34 +117,33 @@ const buildFakeScript = (taskId: TaskId): ReadonlyArray<ScriptedTurn> => [
     ],
   },
   {
-    text: 'Decentralized provider is cheaper and faster — opening USDC escrow.',
+    text: `Decentralized provider is cheaper and faster — opening $${ESCROW_USD} USDC escrow.`,
     tool_calls: [
       {
         name: 'pay_usdc_escrow',
         input: {
           task_id: taskId,
           merchant: DCOMP,
-          amount_usd: 80,
+          amount_usd: ESCROW_USD,
           rationale: 'dcomp quoted within budget; faster than hyperscaler',
         },
       },
     ],
   },
   {
-    text: 'Projected cost rose mid-job. Drawing $50 from the credit line.',
+    text: `Projected cost rose mid-job. Drawing $${CREDIT_USD} from the credit line.`,
     tool_calls: [
       {
         name: 'draw_credit',
         input: {
           task_id: taskId,
-          amount_usd: 50,
-          rationale: 'projected overrun beyond initial $80 ceiling',
+          amount_usd: CREDIT_USD,
+          rationale: `projected overrun beyond initial $${ESCROW_USD} ceiling`,
         },
       },
     ],
   },
-  // Settle for the original $80 — the on-chain Escrow.sol contract enforces
-  // settlement ≤ amount_ceiling, so we honour that in the scripted plan too.
+  // Settle ≤ ESCROW_USD — Escrow.sol enforces final ≤ amount_ceiling.
   {
     text: 'Job complete. Countersigning settlement.',
     tool_calls: [
@@ -144,7 +152,7 @@ const buildFakeScript = (taskId: TaskId): ReadonlyArray<ScriptedTurn> => [
         input: {
           task_id: taskId,
           intent_jti: '__LAST_INTENT__', // resolved at dispatch time below
-          final_amount_usd: 78,
+          final_amount_usd: SETTLE_USD,
           merchant_signature: '0xfake-merchant-sig',
         },
       },
@@ -155,7 +163,7 @@ const buildFakeScript = (taskId: TaskId): ReadonlyArray<ScriptedTurn> => [
     tool_calls: [
       {
         name: 'repay_credit',
-        input: { task_id: taskId, amount_usd: 50 },
+        input: { task_id: taskId, amount_usd: REPAY_USD },
       },
     ],
   },
@@ -178,6 +186,22 @@ const main = async () => {
       }),
       new SupabaseLedgerSink({ databaseUrl: env['DATABASE_URL']! }))
     : new InMemoryLedgerSink();
+
+  // Seed the agent row that mpp_receipts FK to. Task seed happens later once
+  // its ulid is known. No-op for in-memory.
+  if (env['DATABASE_URL']) {
+    const sql = postgres(env['DATABASE_URL']!, { onnotice: () => {} });
+    try {
+      await sql`
+        insert into public.agents (id, principal)
+        values (${AGENT}, ${PRINCIPAL})
+        on conflict (id) do nothing
+      `;
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  }
+
   const { publicKey, privateKey } = await generateKeyPair('EdDSA', { extractable: true });
   const mpp = new MppSimAdapter({
     issuerId: 'mpp-sim://demo/issuer',
@@ -266,6 +290,21 @@ const main = async () => {
     budget_ceiling_usd: BUDGET_USD,
     deadline_iso: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
   };
+
+  // Seed the task row mpp_receipts.task_id FKs to (agent row was seeded
+  // earlier, before delegation issuance).
+  if (env['DATABASE_URL']) {
+    const sql = postgres(env['DATABASE_URL']!, { onnotice: () => {} });
+    try {
+      await sql`
+        insert into public.tasks (id, agent_id, description, budget_ceiling_usd, deadline)
+        values (${taskId}, ${AGENT}, ${task.description}, ${task.budget_ceiling_usd}, ${task.deadline_iso})
+        on conflict (id) do nothing
+      `;
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  }
 
   let llm: LlmPort;
   const backend = env['LLM_BACKEND'];

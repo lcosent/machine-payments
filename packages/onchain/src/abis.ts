@@ -107,6 +107,27 @@ export const CREDIT_LINE_ABI = [
     ],
   },
   {
+    type: 'function',
+    name: 'ltvBps',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint16' }],
+  },
+  {
+    type: 'function',
+    name: 'availableLiquidity',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'fundLiquidity',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [],
+  },
+  {
     type: 'event',
     name: 'Borrowed',
     inputs: [

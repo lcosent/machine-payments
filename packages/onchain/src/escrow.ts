@@ -42,7 +42,11 @@ export interface OpenJobOutput {
 export const openEscrowJob = async (input: OpenJobInput): Promise<OpenJobOutput> => {
   const amount = usdToUsdc6(input.amountUsd);
   const client = input.wallet.raw();
-  const account = input.wallet.address;
+  // Use the wallet's bound local Account, not the address. Passing an address
+  // string makes viem dispatch to eth_sendTransaction (json-rpc account), which
+  // public RPCs reject with "unknown account". The local Account triggers
+  // eth_sendRawTransaction with a client-side signature.
+  const account = client.account!;
 
   const approveTx = await client.writeContract({
     account,
@@ -52,6 +56,12 @@ export const openEscrowJob = async (input: OpenJobInput): Promise<OpenJobOutput>
     functionName: 'approve',
     args: [input.escrow, amount],
   });
+  // Wait for the approve to be mined so openJob's transferFrom sees the
+  // allowance. Without this, on networks with non-trivial block time the
+  // openJob tx lands before the allowance is observable and reverts with
+  // ERC20: transfer amount exceeds allowance.
+  const earlyReader = input.publicClient ?? defaultReader(client);
+  await earlyReader.waitForTransactionReceipt({ hash: approveTx });
 
   const openTx = await client.writeContract({
     account,
@@ -120,7 +130,7 @@ export const settleEscrowJob = async (input: {
   const amount = usdToUsdc6(input.finalAmountUsd);
   const client = input.wallet.raw();
   return client.writeContract({
-    account: input.wallet.address,
+    account: client.account!,
     chain: client.chain!,
     address: input.escrow,
     abi: ESCROW_ABI,

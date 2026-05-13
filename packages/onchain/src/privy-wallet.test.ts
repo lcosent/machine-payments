@@ -53,7 +53,7 @@ describe('makePrivyWallet', () => {
       accountFactory: factory,
     });
     const client = wallet.raw();
-    expect(client.chain?.id).toBe(84532); // baseSepolia
+    expect(client.chain?.id).toBe(11155111); // sepolia
     expect(client.account?.address).toBe(ADDR);
   });
 });

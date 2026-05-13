@@ -15,7 +15,7 @@ contract MockUSDC is ERC20 {
 contract CreditLineTest is Test {
     CreditLine line;
     MockUSDC usdc;
-    address owner = address(0x0WNER);
+    address owner = address(0xBABE);
     address agent = address(0xA9E47);
 
     function setUp() public {

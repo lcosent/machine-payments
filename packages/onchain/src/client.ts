@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Address } from 'viem';
-import { baseSepolia } from 'viem/chains';
+import { sepolia } from 'viem/chains';
 
 export interface ChainConfig {
   rpcUrl: string;
@@ -28,6 +28,6 @@ export const readChainConfigFromEnv = (env: NodeJS.ProcessEnv = process.env): Ch
 };
 
 export const makePublicClient = (rpcUrl: string) =>
-  createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
+  createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
 
 export type AutoComputePublicClient = ReturnType<typeof makePublicClient>;

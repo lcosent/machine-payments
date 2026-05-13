@@ -6,7 +6,7 @@ import {
   type Hex,
   type WalletClient,
 } from 'viem';
-import { baseSepolia } from 'viem/chains';
+import { sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
 /// The agent's transaction surface. Today: an EOA via viem. Tomorrow: an
@@ -22,7 +22,7 @@ export interface AgentWallet {
 
 export const makeEoaWallet = (privateKey: Hex, rpcUrl: string): AgentWallet => {
   const account: Account = privateKeyToAccount(privateKey);
-  const client = createWalletClient({ account, chain: baseSepolia, transport: http(rpcUrl) });
+  const client = createWalletClient({ account, chain: sepolia, transport: http(rpcUrl) });
   return {
     address: account.address,
     signMessage: (message) => client.signMessage({ message }),

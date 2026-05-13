@@ -118,11 +118,89 @@ TS twin of the SQL view.
 
 ---
 
-## Tier 3 — Base Sepolia smart contracts
+## Tier 3 — testnet smart contracts (Ethereum Sepolia today; Base Sepolia
+when Circle USDC faucet supplies it)
 
 Replaces the in-memory `EscrowPort` and `CreditPort` with viem-backed
-implementations that hit deployed `Escrow.sol` and `CreditLine.sol` on
-Base Sepolia.
+implementations that hit deployed `Escrow.sol` and `CreditLine.sol` on a
+real EVM testnet. The original target was Base Sepolia; the live demo runs
+on **Ethereum Sepolia** because that's where Circle's USDC faucet currently
+issues without rate-limit, but every line of code is chain-agnostic — swap
+the RPC, chain id, and USDC address and the same flow runs anywhere.
+
+The current live deployment (commit b9adb75…this commit):
+
+| | |
+| --- | --- |
+| Chain | Ethereum Sepolia (id `11155111`) |
+| `Escrow.sol` | `0x7590cD3bA111Bd05Fb289A63e92464cc8B283e0F` |
+| `CreditLine.sol` | `0xdf36B0c9B26067e3B8477b9259ED426DA79fd150` |
+| USDC | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` (Circle testnet) |
+| Agent (Privy server wallet) | `0x3545fD7761c6Bd5Ef17c5Ac65c369d44E26ccA9F` |
+| Deployer / pool owner | `0xf77e31c4048daEd64B341317a0b48Ab72C44e8f1` |
+
+### What an end-to-end Tier 3 run actually does
+
+When `pnpm script:agent` runs with `ESCROW_ADDRESS` + `CREDIT_LINE_ADDRESS`
++ a signer (Privy or raw key) set, the scripted plan executes against the
+real chain:
+
+1. **MPP delegation issued** (off-chain JWT, Ed25519). Ledger row in
+   `mpp_receipts`.
+2. **`pay_usdc_escrow $4`** → agent's wallet does `USDC.approve(Escrow, 4e6)`,
+   then `Escrow.openJob(provider, 4e6, deadline, intentHash, taskId)`. Real
+   txs on Sepolia. Escrow contract now holds 4 USDC; agent's balance −4.
+3. **`draw_credit $2`** → `OnchainCreditPort` reads the account, sees no
+   collateral, posts 4 USDC collateral (50% LTV), then `borrow(2e6)`. Three
+   real txs (approve → depositCollateral → borrow), agent's balance net −2.
+4. **`settle_task` for $3.9** → agent asks the dcomp mock to sign the
+   `(escrowAddress, jobId, finalAmount)` digest with the provider's
+   on-chain EOA; calls `Escrow.settle(jobId, 3.9e6, sig)`. Contract
+   verifies ECDSA → provider gets 3.9 USDC, agent gets 0.1 USDC back.
+5. **`repay_credit $2`** → `USDC.approve(CreditLine, 2e6)` then
+   `CreditLine.repay(2e6)`. Principal → 0. Collateral stays posted (the
+   demo doesn't withdraw).
+6. **Reconciler** snapshots all ledger sinks and prints the
+   `unified_statement`. Successful tier-3 task row:
+   `mpp_settled_usd=3.9 / escrow_settled_usd=3.9 / credit_drawn=2 /
+   credit_repaid=2 / anomalies=[]`.
+
+Per run the agent burns ~$4 USDC of testnet float (the escrow leg's
+final-vs-ceiling is 3.9 vs 4 so 0.1 refunds; the credit leg is fully
+repaid). Two runs on a 10-USDC faucet is the practical budget.
+
+### Known drawbacks of this PoC (not bugs — explicit scope choices)
+
+- **Single demo run depletes ~$4 USDC of testnet float.** The escrow leg
+  refunds 0.1 USDC; the provider keeps 3.9. Each subsequent run needs
+  another top-up. We mitigated by transferring USDC from the deployer
+  (which is also the pool owner) when needed.
+- **Same-asset collateralization in `CreditLine.sol`.** Collateral and
+  borrow are both USDC. Real lending would use a price oracle on a
+  separate collateral asset. Called out in the contract NatSpec.
+- **No metering loop.** `Escrow.meter()` exists in the contract but the
+  agent never calls it. The MPP design supports streaming progress
+  receipts; the PoC skips them for clarity.
+- **Mock provider state lives in process memory.** `DcompStore` and
+  `HyperscalerStore` are `Map`s pinned to `globalThis`. Survives Next.js
+  HMR; does NOT survive a `pnpm dev` restart. Reset the chain state if
+  you restart the dev server mid-run.
+- **No batching / paymaster.** Each `approve` + state-changing call is a
+  separate tx, so a single agent run mints 6–8 txs. A 4337 smart wallet
+  with a paymaster would batch them.
+- **Signer choice is binary at boot.** `scripts/agent.ts` picks Privy XOR
+  EOA based on which env vars are set; no runtime switching. Production
+  agents would carry a key-rotation flow.
+- **`scripts/deploy.sh` re-installs forge libs each run.** Cheap if you
+  already have `lib/`; first deploy on a new machine takes ~30s extra.
+- **`script:agent` doesn't withdraw collateral at end.** After the demo
+  the agent has 4 USDC locked in `CreditLine` as collateral with 0
+  principal. Withdraw is a one-liner the demo doesn't call.
+- **Same on-chain addresses across Eth Sepolia / Base Sepolia.** Both
+  chains were deployed from the same deployer EOA at the same nonce,
+  so the contract addresses are identical. The Base Sepolia copies
+  exist but aren't funded — only the Eth Sepolia copies are live for
+  the demo.
 
 ### 1. Install Foundry
 

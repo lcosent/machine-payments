@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      postgres:
+        specifier: 3.4.5
+        version: 3.4.5
     devDependencies:
       '@autocompute/agent':
         specifier: workspace:*
